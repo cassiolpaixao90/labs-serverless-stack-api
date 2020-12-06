@@ -1,65 +1,31 @@
 const webpack = require('webpack');
-const path = require('path');
+const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
+const slsw = require('serverless-webpack');
 const nodeExternals = require('webpack-node-externals');
-const WebpackShellPluginNext = require('webpack-shell-plugin-next');
+
+const isLocal = slsw.lib.webpack.isLocal;
 
 module.exports = {
-  mode: 'production',
-  entry: path.resolve(__dirname, 'src/main.ts'),
+  entry: slsw.lib.entries,
+  mode: isLocal ? 'development' : 'production',
   target: 'node',
-  node: {
-    __filename: false,
-    __dirname: false
-  },
-  performance: {
-    hints: false
-  },
-  optimization: {
-    emitOnErrors: true
-  },
-  module: {
-    rules: [
-      {
-        test: /\.ts?$/,
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              transpileOnly: true
-            }
-          }
-        ],
-        exclude: /node_modules/
-      }
-    ]
-  },
-  resolve: {
-    extensions: [".ts", ".tsx", ".wasm", ".mjs", ".js", ".json"]
-  },
-  externals: [
-    nodeExternals({
-      modulesFromFile: true,
-      allowlist: [
-        /\.(eot|woff|woff2|ttf|otf)$/,
-        /\.(svg|png|jpg|jpeg|gif|ico|webm)$/,
-        /\.(mp4|mp3|ogg|swf|webp)$/,
-        /\.(css|scss|sass|less|styl)$/,
-      ]
-    })
-  ],
+  externals: [nodeExternals()],
   plugins: [
     new webpack.IgnorePlugin({
+      /**
+       * There is a small problem with Nest's idea of lazy require() calls,
+       * Webpack tries to load these lazy imports that you may not be using,
+       * so we must explicitly handle the issue.
+       * Refer to: https://github.com/nestjs/nest/issues/1706
+       */
       checkResource(resource) {
         const lazyImports = [
           '@nestjs/microservices',
           '@nestjs/platform-express',
-          '@nestjs/websockets',
-          '@nestjs/grahpql',
-,         'cache-manager',
+          'cache-manager',
           'class-validator',
           'class-transformer',
         ];
-
         if (!lazyImports.includes(resource)) {
           return false;
         }
@@ -71,21 +37,22 @@ module.exports = {
         return false;
       },
     }),
-    new WebpackShellPluginNext({
-      onAfterDone: {
-          scripts: [
-            'echo starting generate swagger...',
-            'npx ts-node src/swagger.ts',
-            'echo finish success'
-          ],
-          blocking: true,
-          parallel: false
-      }
-    })
   ],
-  output: {
-    libraryTarget: 'commonjs',
-    filename: 'index.js',
-    path: path.resolve(__dirname, 'dist')
-  }
+  resolve: {
+    extensions: ['.ts', '.js'],
+    plugins: [new TsconfigPathsPlugin({ configFile: './tsconfig.build.json' })],
+  },
+  module: {
+    rules: [{ test: /\.ts$/, loader: 'ts-loader' }],
+  },
+  stats: {
+    // This is optional, but it hides noisey warnings
+    warningsFilter: [
+      'node_modules/express/lib/view.js',
+      'node_modules/@nestjs/common/utils/load-package.util.js',
+      'node_modules/@nestjs/core/helpers/load-adapter.js',
+      'node_modules/optional/optional.js',
+      () => false,
+    ],
+  },
 };
